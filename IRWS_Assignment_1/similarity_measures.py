@@ -7,6 +7,7 @@ Attributes:
 import subprocess
 import urllib
 import glob
+import numpy
 
 from nltk.corpus import stopwords
 from google import search
@@ -98,15 +99,35 @@ def preprocess(filename):
     remove_stopwords(filename)
 
 
-def generate_tf_matrix(query, filename):
-    
+def get_termfreq_list(query, filename):
+    """Calculate frequency of each query term in file
+
+    Args:
+        query (string): Search query
+        filename (string)
+
+    Returns:
+        list: List of term frequencies in file
+    """
+    tf_list = []
+
+    with open(filename, 'r') as f:
+        raw_text = f.read()
+
+    for term in query.split():
+        tf = raw_text.lower().count(term)
+        tf_list.append(tf)
+
+    return tf_list
+
 
 def main():
 
-    # query = raw_input("Query: ")
+    query = raw_input("Query: ")
+    query = query.lower()
     # download_documents(query)
 
-    # Generate text files from doc files
+    # # Generate text files from doc files
     # doc_files = glob.glob('*.doc')
     # if doc_files:
     #     for f in doc_files:
@@ -114,7 +135,7 @@ def main():
     # else:
     #     print "No doc files to process."
 
-    # Preprocess text files
+    # # Preprocess text files
     # text_files = glob.glob('*.txt')
     # if text_files:
     #     for f in text_files:
@@ -123,12 +144,20 @@ def main():
     #     print "No text files to process."
 
     processed_files = glob.glob('processed*.txt')
+    num_files = len(processed_files)
+    num_terms = len(query.split())
+    tf_matrix = numpy.zeros(shape=(num_files, num_terms))
+
     if processed_files:
+        index = 0
         for f in processed_files:
-            generate_tf_matrix(query, f)
+            print f
+            tf_matrix[index] = get_termfreq_list(query, f)
+            index += 1
     else:
         print "No files to process."
 
+    print tf_matrix
 
 if __name__ == "__main__":
     main()
