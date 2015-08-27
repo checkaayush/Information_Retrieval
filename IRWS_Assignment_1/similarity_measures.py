@@ -4,6 +4,7 @@ Attributes:
     NUM_DOCS (int): Number of documents to be downloaded
 """
 
+import sys
 import subprocess
 import urllib
 import glob
@@ -11,9 +12,16 @@ import numpy
 from math import log10
 
 from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+# from nltk.stem.porter import PorterStemmer
 from google import search
 
-NUM_DOCS = 2
+TOTAL_DOCS = 2
+NUM_DOCS_DOWNLOAD = 1
+
+# Set default character encoding
+reload(sys)
+sys.setdefaultencoding('UTF8')
 
 
 def download_documents(query):
@@ -38,21 +46,20 @@ def download_documents(query):
         # print urllib.unquote(url)
 
         doc_count += 1
-        # Hacky check to get 10 docs
-        global NUM_DOCS
-        if doc_count == NUM_DOCS:
+        # Hacky check to get desired number of docs
+        global NUM_DOCS_DOWNLOAD
+        if doc_count == NUM_DOCS_DOWNLOAD:
             break
 
 
-def doc_to_text_catdoc(filename):
-    """Convert .doc file to .txt file.
+def helper_doc_to_text(filename):
+    """Convert .doc file to .txt file using 'catdoc' linux utility
 
     Args:
         filename (string): Name of the file
 
     Raises:
         OSError
-
     """
 
     text_file = filename.split('.')[0] + ".txt"
@@ -68,61 +75,162 @@ def doc_to_text_catdoc(filename):
             print "Command %s could not be executed." % command
 
 
-def remove_stopwords(filename):
-    """Remove stopwords from file.
-       Creates new file without stopwords with prefix - 'processed'.
+def remove_stopwords(token_list):
+    """Remove stopwords from list of words.
 
     Args:
-        filename (string): Name of text file to be processed
-
-    """
-    word_list = open(filename, "r")
-    stops = set(stopwords.words('english'))
-    processed_file = "processed_" + filename.split('.')[0] + ".txt"
-
-    file_string = ""
-    for line in word_list:
-        for w in line.split():
-            if w.lower() not in stops:
-                # print w
-                file_string = file_string + " " + w
-
-    with open(processed_file, "w") as f:
-        f.write(file_string)
-
-
-def preprocess(filename):
-    """Preprocess the raw text file.
-
-    Args:
-        filename (string)
-    """
-    remove_stopwords(filename)
-
-
-def get_termfreq_list(query, filename):
-    """Calculate frequency of each query term in file
-
-    Args:
-        query (string): Search query
-        filename (string)
+        token_list (list): List of words including stopwords
 
     Returns:
-        list: List of term frequencies in file
+        list: List of words without stopwords
     """
+
+    stops = set(stopwords.words('english'))
+    word_list = []
+
+    for token in token_list:
+        if token not in stops:
+            word_list.append(token)
+
+    return word_list
+
+
+def preprocess_text(text):
+    """Preprocess the text by Tokenization, Stopword Removal, etc.
+
+    Args:
+        text (string): Raw text to be processed
+
+    Returns:
+        list: List of processed words from text
+    """
+
+    # Character encoding and decoding
+    text = text.decode(encoding='UTF-8', errors='ignore')
+    text = text.encode(encoding='ASCII', errors='ignore')
+
+    # Convert to lowercase
+    text = text.lower()
+
+    # Tokenize
+    token_list = word_tokenize(text)
+
+    # Remove stopwords
+    word_list = remove_stopwords(token_list)
+
+    # Stemming and/or Lemmatization
+    # TODO: Might have to stem and/or lemmatize query as well
+    # porter_stemmer = PorterStemmer()
+    # word_list = [porter_stemmer.stem(word) for word in word_list]
+
+    return word_list
+
+
+def get_termfreq_list(query_terms, word_list):
+    """Get term-frequency list
+
+    Args:
+        query_terms (list): List of query terms
+        word_list (TYPE): List of words in processed document
+
+    Returns:
+        list: List of frequencies of query terms in documents
+    """
+
     tf_list = []
 
-    with open(filename, 'r') as f:
-        raw_text = f.read()
-
-    for term in query.split():
-        tf = raw_text.lower().count(term)
+    for term in query_terms:
+        tf = word_list.count(term)
         tf_list.append(tf)
 
     return tf_list
 
 
-def generate_tf_idf_matrix(tf_matrix):
+def generate_tf_matrix(index_terms):
+    """Generates Term-Frequency Matrix
+
+    Args:
+        index_terms (list): List of processed query terms
+
+    Returns:
+        numpy array: Term-Frequency matrix
+    """
+
+    text_files = sorted(glob.glob('*.txt'))
+
+    num_files = len(text_files)
+    num_index_terms = len(index_terms)
+    tf_matrix = numpy.zeros(shape=(num_files, num_index_terms))
+
+    if text_files:
+        for doc_index, filename in enumerate(text_files):
+            with open(filename, 'r') as f:
+                word_list = preprocess_text(f.read())
+                tf_list = get_termfreq_list(index_terms, word_list)
+                tf_matrix[doc_index] = numpy.array(tf_list)
+    else:
+        print "No text files to process."
+
+    return tf_matrix
+
+
+def get_wordcount(filename):
+    """Count number of words in processed file.
+
+    Args:
+        filename (string)
+
+    Returns:
+        int: Wordcount
+    """
+
+    with open(filename, 'r') as f:
+        word_list = preprocess_text(f.read())
+        return len(word_list)
+
+
+def normalize(tf_matrix, wordcount_list):
+    """Normalize effect of length of document on term-frequency
+
+    Args:
+        tf_matrix (numpy array): Term-frequency matrix for documents
+        wordcount_list (list): List of wordcounts for documents
+
+    Returns:
+        numpy array: Normalized Term-frequency matrix
+    """
+
+    (rows, cols) = tf_matrix.shape
+    norm_tf_matrix = numpy.zeros(shape=(rows, cols), dtype=numpy.float)
+    for row in range(rows):
+        for col in range(cols):
+            if wordcount_list[row]:
+                norm_tf_matrix = float(tf_matrix) / wordcount_list[row]
+            else:
+                norm_tf_matrix = tf_matrix.astype(float)
+
+    return norm_tf_matrix
+
+
+def get_wordcount_list():
+    """Get wordcounts for documents.
+
+    Returns:
+        list: List of wordcounts for documents
+    """
+
+    text_files = sorted(glob.glob('*.txt'))
+    wordcount_list = []
+    if text_files:
+        for file_index, f in enumerate(text_files):
+            wordcount_list.append(get_wordcount(f))
+    else:
+        print "No doc files to process."
+
+    return wordcount_list
+
+
+def generate_weight_matrix(tf_matrix):
     """Generates TF-IDF weight matrix.
 
     Args:
@@ -136,68 +244,64 @@ def generate_tf_idf_matrix(tf_matrix):
     # Create weight matrix
     weight_matrix = numpy.zeros(shape=(rows, cols), dtype=numpy.float)
 
+    # Normalize effect of length of document on term frequency
+    wordcount_list = get_wordcount_list()
+    norm_tf_matrix = normalize(tf_matrix, wordcount_list)
+
     for i in range(rows):
         for j in range(cols):
-            tf = tf_matrix[i][j]
 
-            # Calculate document frequency
+            # Normalized Term Frequency
+            norm_tf = norm_tf_matrix[i][j]
+
+            # Document Frequency (DF)
             df = 0
             for entry in tf_matrix[:, j]:
-                # print "entry ", entry
                 if entry > 0:
                     df += 1
 
-            idf = 1 + log10((10 * NUM_DOCS) / df)
+            # Inverse Document Frequency (IDF)
+            idf = 1 + log10(TOTAL_DOCS / df)
 
-            weight_matrix[i][j] = tf * idf
+            # (Normalized TF)-IDF weight matrix
+            weight_matrix[i][j] = norm_tf * idf
 
     return weight_matrix
+
+
+def doc_to_text():
+    """Generate text files from doc files."""
+
+    doc_files = sorted(glob.glob('*.doc'))
+    if doc_files:
+        for f in doc_files:
+            helper_doc_to_text(f)
+    else:
+        print "No doc files to process."
 
 
 def main():
 
     # Default query for testing
-    # query = "anna hazare"
+    query = "anna hazare"
 
-    query = raw_input("Query: ")
-    query = query.lower()
-    # download_documents(query)
+    # query = raw_input("Query: ")
+    index_terms = preprocess_text(query)
+    search_query = ' '.join(index_terms)
 
-    # Generate text files from doc files
-    # doc_files = glob.glob('*.doc')
-    # if doc_files:
-    #     for f in doc_files:
-    #         doc_to_text_catdoc(f)
-    # else:
-    #     print "No doc files to process."
+    # Download documents
+    download_documents(search_query)
 
-    # Preprocess text files
-    # text_files = glob.glob('*.txt')
-    # if text_files:
-    #     for f in text_files:
-    #         preprocess(f)
-    # else:
-    #     print "No text files to process."
+    # Generate text files from .doc files
+    doc_to_text()
 
-    # Generate Frequency Matrix
-    processed_files = glob.glob('processed*.txt')
-    num_files = len(processed_files)
-    num_terms = len(query.split())
-    tf_matrix = numpy.zeros(shape=(num_files, num_terms))
-
-    if processed_files:
-        index = 0
-        for f in processed_files:
-            print "\nProcessed file : %s" % f
-            tf_matrix[index] = get_termfreq_list(query, f)
-            index += 1
-    else:
-        print "No files to process."
-    print "\nTerm frequency matrix:\n\n", tf_matrix
+    # Generate Term-Frequency matrix
+    tf_matrix = generate_tf_matrix(index_terms)
 
     # Calculate TF-IDF weighting
-    weight_matrix = generate_tf_idf_matrix(tf_matrix)
+    weight_matrix = generate_weight_matrix(tf_matrix)
     print "\nTF-IDF Weight Matrix:\n\n", weight_matrix
+
 
 if __name__ == "__main__":
     main()
