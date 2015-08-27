@@ -1,7 +1,8 @@
 """Script to compare different similarity measures
 
 Attributes:
-    NUM_DOCS (int): Number of documents to be downloaded
+    NUM_DOCS_DOWNLOAD (int): Number of documents to be downloaded
+    TOTAL_DOCS (int): Total number of documents in the corpus
 """
 
 import sys
@@ -202,10 +203,11 @@ def normalize(tf_matrix, wordcount_list):
 
     (rows, cols) = tf_matrix.shape
     norm_tf_matrix = numpy.zeros(shape=(rows, cols), dtype=numpy.float)
-    for row in range(rows):
-        for col in range(cols):
-            if wordcount_list[row]:
-                norm_tf_matrix = float(tf_matrix) / wordcount_list[row]
+    for r in range(rows):
+        for c in range(cols):
+            if wordcount_list[r]:
+                norm_tf_matrix[r][c] = (float(tf_matrix[r][c]) /
+                                        wordcount_list[r])
             else:
                 norm_tf_matrix = tf_matrix.astype(float)
 
@@ -280,23 +282,44 @@ def doc_to_text():
         print "No doc files to process."
 
 
-def main():
+def create_corpus():
+    """Create document corpus from user queries."""
 
-    # Default query for testing
-    query = "anna hazare"
+    num_queries = input("\nNumber of queries: ")
 
-    # query = raw_input("Query: ")
-    index_terms = preprocess_text(query)
-    search_query = ' '.join(index_terms)
+    global NUM_DOCS_DOWNLOAD
+    NUM_DOCS_DOWNLOAD = input("Number of docs for each query: ")
 
-    # Download documents
-    download_documents(search_query)
+    global TOTAL_DOCS
+    TOTAL_DOCS = num_queries * NUM_DOCS_DOWNLOAD
+
+    print "Total docs = %d" % TOTAL_DOCS
+
+    for i in range(num_queries):
+        query = raw_input("\nQuery: ")
+        index_terms = preprocess_text(query)
+        search_query = ' '.join(index_terms)
+
+        # Download documents
+        download_documents(search_query)
 
     # Generate text files from .doc files
     doc_to_text()
 
+
+def main():
+
+    # Create document corpus from user queries.
+    create_corpus()
+
+    # New query
+    new_query = raw_input("\nNew query: ")
+
+    index_terms = new_query.split()
+
     # Generate Term-Frequency matrix
     tf_matrix = generate_tf_matrix(index_terms)
+    print "\nTerm Frequency Matrix:\n\n", tf_matrix
 
     # Calculate TF-IDF weighting
     weight_matrix = generate_weight_matrix(tf_matrix)
