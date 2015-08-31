@@ -112,7 +112,7 @@ def preprocess_text(text):
     text = text.decode(encoding='UTF-8', errors='ignore')
     text = text.encode(encoding='ASCII', errors='ignore')
 
-    # Convert to lowercase
+    # Case folding to lowercase
     text = text.lower()
 
     # Tokenize
@@ -121,7 +121,7 @@ def preprocess_text(text):
     # Remove stopwords
     word_list = remove_stopwords(token_list)
 
-    # Stemming and/or Lemmatization
+    # Stemming and/or Lemmatization (Reducing inflectional forms)
     # TODO: Might have to stem and/or lemmatize query as well
     # porter_stemmer = PorterStemmer()
     # word_list = [porter_stemmer.stem(word) for word in word_list]
@@ -309,26 +309,48 @@ def create_corpus():
     doc_to_text()
 
 
+# def get_query_vector():
+
+
 def main():
 
     # # Create document corpus from user queries.
     # create_corpus()
 
     # # New query
-    # new_query = raw_input("\nNew query: ")
+    new_query = raw_input("\nNew query: ")
+    # len_new_query = len(new_query.split())
 
-    # index_terms = new_query.split()
+    modified_query = preprocess_text(new_query)
+    index_terms = modified_query.split()
 
     # # Generate Term-Frequency matrix
-    # tf_matrix = generate_tf_matrix(index_terms)
-    # print "\nTerm Frequency Matrix:\n\n", tf_matrix
+    tf_matrix = generate_tf_matrix(index_terms)
+    print "\nTerm Frequency Matrix:\n\n", tf_matrix
 
-    # # Calculate TF-IDF weighting
-    # weight_matrix = generate_weight_matrix(tf_matrix)
-    # print "\nTF-IDF Weight Matrix:\n\n", weight_matrix
+    # # Calculate TF-IDF weighting (Term-Document Matrix)
+    weight_matrix = generate_weight_matrix(tf_matrix)
+    print "\nTF-IDF Weight Matrix:\n\n", weight_matrix
 
+    # query_vector = get_query_vector(len_new_query, index_terms)
     cos_sim = similarity_measures.cosine_similarity([1, 2, 3], [3, 2, 1])
     print cos_sim
+
+    # Some notes:
+    # 1) Document score will be addition of TF-IDF weighting scores
+    # over all query terms
+    #
+    # 2) Normalization based on Document length should consider
+    # only the terms in vocabulary as superset (unique terms in
+    # bag of words representation of document).
+    #
+    # 3) Ideally, cos_sim(query, doc) should have both vector sizes
+    # equal to the size of the vocabulary. But, since we are considering
+    # TF-IDF weights as the vector values, it will turn out to be
+    # computationally very expensive for all terms in vocabulary
+    # (and inefficient, since we haven't yet used the inverted-index form).
+    # Instead, we could use vector size equal to size of query. Additionally,
+    # we could incorporate term-weights for query terms.
 
 if __name__ == "__main__":
     main()
