@@ -115,10 +115,10 @@ def preprocess_text(text):
     # Case folding to lowercase
     text = text.lower()
 
-    # Tokenize
+    # Tokenization
     token_list = word_tokenize(text)
 
-    # Remove stopwords
+    # Stopword-Removal
     word_list = remove_stopwords(token_list)
 
     # Stemming and/or Lemmatization (Reducing inflectional forms)
@@ -340,9 +340,14 @@ def main():
     # 1) Document score will be addition of TF-IDF weighting scores
     # over all query terms
     #
-    # 2) Normalization based on Document length should consider
+    # 2) Rethink normalization based on Document length. It's surely
+    # needed, as otherwise, larger docs would get priority. Maybe, Consider
     # only the terms in vocabulary as superset (unique terms in
     # bag of words representation of document).
+    # Also, try Maximum-TF Normalization (dividing by max tf)?
+    # Something like: ntf = 0.4 + 0.6 * (tf / tf_max)
+    # ntf is also called Augmented term frequency.
+    # 0.4 is the smoothing term.
     #
     # 3) Ideally, cos_sim(query, doc) should have both vector sizes
     # equal to the size of the vocabulary. But, since we are considering
@@ -351,6 +356,7 @@ def main():
     # (and inefficient, since we haven't yet used the inverted-index form).
     # Instead, we could use vector size equal to size of query. Additionally,
     # we could incorporate term-weights for query terms.
+    #
 
 if __name__ == "__main__":
     main()
