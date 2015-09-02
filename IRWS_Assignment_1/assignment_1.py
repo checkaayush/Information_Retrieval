@@ -11,6 +11,7 @@ import urllib
 import glob
 import numpy
 import math
+from collections import OrderedDict
 
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
@@ -19,7 +20,7 @@ from google import search
 
 import similarity_measures
 
-TOTAL_DOCS = 2
+TOTAL_DOCS = 3
 NUM_DOCS_DOWNLOAD = 1
 
 # Set default character encoding
@@ -53,6 +54,17 @@ def download_documents(query):
         global NUM_DOCS_DOWNLOAD
         if doc_count == NUM_DOCS_DOWNLOAD:
             break
+
+
+def doc_to_text():
+    """Generate text files from doc files."""
+
+    doc_files = sorted(glob.glob('*.doc'))
+    if doc_files:
+        for f in doc_files:
+            helper_doc_to_text(f)
+    else:
+        print "No doc files to process."
 
 
 def helper_doc_to_text(filename):
@@ -159,7 +171,9 @@ def generate_tf_matrix(index_terms):
         numpy array: Term-Frequency matrix
     """
 
+    # TODO: Only retrieved files should be used here.
     text_files = sorted(glob.glob('*.txt'))
+    # print text_files
 
     num_files = len(text_files)
     num_index_terms = len(index_terms)
@@ -177,7 +191,7 @@ def generate_tf_matrix(index_terms):
     return tf_matrix
 
 
-def get_wordcount(filename):
+def get_total_wordcount(filename):
     """Count number of words in processed file.
 
     Args:
@@ -190,6 +204,24 @@ def get_wordcount(filename):
     with open(filename, 'r') as f:
         word_list = preprocess_text(f.read())
         return len(word_list)
+
+
+def get_wordcount_list():
+    """Get wordcounts for documents.
+
+    Returns:
+        list: List of wordcounts for documents
+    """
+
+    text_files = sorted(glob.glob('*.txt'))
+    wordcount_list = []
+    if text_files:
+        for file_index, f in enumerate(text_files):
+            wordcount_list.append(get_total_wordcount(f))
+    else:
+        print "No doc files to process."
+
+    return wordcount_list
 
 
 def normalize(tf_matrix, wordcount_list):
@@ -216,22 +248,31 @@ def normalize(tf_matrix, wordcount_list):
     return norm_tf_matrix
 
 
-def get_wordcount_list():
-    """Get wordcounts for documents.
+def get_idf(tf_matrix, term_index):
+    """Calculates Inverse document frequency for given term.
+
+    Args:
+        tf_matrix (nump array): Term frequency matrix
+        term_index (int): Index of term in query (0-based indexing)
 
     Returns:
-        list: List of wordcounts for documents
+        float: Inverse Document Frequency
     """
 
-    text_files = sorted(glob.glob('*.txt'))
-    wordcount_list = []
-    if text_files:
-        for file_index, f in enumerate(text_files):
-            wordcount_list.append(get_wordcount(f))
-    else:
-        print "No doc files to process."
+    # Document Frequency (DF)
+    df = 0
+    for entry in tf_matrix[:, term_index]:
+        if entry > 0:
+            df += 1
 
-    return wordcount_list
+    # print "df = ", df
+    # Inverse Document Frequency (IDF)
+    if df:
+        idf = 1.0 + math.log10(float(TOTAL_DOCS) / df)
+    else:
+        idf = 0.0
+
+    return idf
 
 
 def generate_weight_matrix(tf_matrix):
@@ -258,30 +299,13 @@ def generate_weight_matrix(tf_matrix):
             # Normalized Term Frequency
             norm_tf = norm_tf_matrix[i][j]
 
-            # Document Frequency (DF)
-            df = 0
-            for entry in tf_matrix[:, j]:
-                if entry > 0:
-                    df += 1
-
-            # Inverse Document Frequency (IDF)
-            idf = 1 + math.log10(TOTAL_DOCS / df)
+            # Inverse Document Frequency
+            idf = get_idf(tf_matrix, j)
 
             # (Normalized TF)-IDF weight matrix
             weight_matrix[i][j] = norm_tf * idf
 
     return weight_matrix
-
-
-def doc_to_text():
-    """Generate text files from doc files."""
-
-    doc_files = sorted(glob.glob('*.doc'))
-    if doc_files:
-        for f in doc_files:
-            helper_doc_to_text(f)
-    else:
-        print "No doc files to process."
 
 
 def create_corpus():
@@ -309,54 +333,130 @@ def create_corpus():
     doc_to_text()
 
 
-# def get_query_vector():
+def get_query_vector(index_terms, tf_matrix):
+    """Creates query vector of query-term-weights.
+
+    Args:
+        index_terms (list):
+        tf_matrix (numpy array):
+
+    Returns:
+        list: Query vector
+    """
+
+    # q_len = len(index_terms)
+    q_vector = []
+    for t in index_terms:
+        t_count = index_terms.count(t)
+        q_vector.append(t_count)
+
+    # for t in range(q_len):
+    #     tf = index_terms.count(index_terms[t])
+    #     norm_tf = (float(tf) / q_len)
+    #     # print "\nnorm_tf = ", norm_tf
+
+    #     idf = get_idf(tf_matrix, t)
+    #     # print "\nidf = ", idf
+
+    #     weight = norm_tf * idf
+    #     # print "tf * idf = ", weight
+
+    #     q_vector.append(weight)
+
+    return q_vector
+
+
+def ranking_tf_idf(documents, tf_matrix):
+
+    # TF-IDF weighting (Term-Document Matrix)
+    weight_matrix = generate_weight_matrix(tf_matrix)
+    print "\nTF-IDF Weight Matrix:\n\n", weight_matrix
+
+    (rows, cols) = weight_matrix.shape
+    tf_idf_rank = {}
+    for row in range(rows):
+        doc_score = sum(weight_matrix[row])
+        tf_idf_rank[documents[row]] = doc_score
+
+    tf_idf_rank = OrderedDict(sorted(tf_idf_rank.items(), key=lambda t: t[1],
+                              reverse=True))
+    # print "\ntf_idf_ranks : ", tf_idf_rank
+    return tf_idf_rank
+
+
+def print_ranking(ranks_dict):
+    print "\nRank\tFilename\tScore\n"
+    for i, t in enumerate(ranks_dict):
+        print "%d\t%s\t%f" % (i + 1, t, ranks_dict[t])
+    print
+
+
+def ranking_cos_sim(documents, index_terms):
+    cos_sim_rank = {}
+    for i, d in enumerate(documents):
+        with open(d, 'r') as f:
+            text = f.read()
+
+        # Build vocabulary (exhaustive word set for doc + query)
+        word_list = preprocess_text(text)
+        result_list = [index_terms, word_list]
+        vocabulary = set().union(*result_list)
+
+        doc_vector = [0] * len(vocabulary)
+        query_vector = [0] * len(vocabulary)
+        for j, word in enumerate(vocabulary):
+            count = word_list.count(word)
+            doc_vector[j] = count
+            if word in index_terms:
+                # print word, count
+                query_vector[j] = count
+
+        # print doc_vector
+        value = similarity_measures.cosine_similarity(query_vector,
+                                                      doc_vector)
+        # cos_sim.append(value)
+        cos_sim_rank[d] = value
+        cos_sim_rank = OrderedDict(sorted(cos_sim_rank.items(), key=lambda t:
+                                   t[1], reverse=True))
+
+    return cos_sim_rank
 
 
 def main():
 
+    # # TODO: Menu driven
     # # Create document corpus from user queries.
     # create_corpus()
 
-    # # New query
+    # New query
     new_query = raw_input("\nNew query: ")
-    # len_new_query = len(new_query.split())
 
-    modified_query = preprocess_text(new_query)
-    index_terms = modified_query.split()
+    index_terms = preprocess_text(new_query)
 
-    # # Generate Term-Frequency matrix
+    # # TODO: Generate TF matrix for only the relevant retrieved docs
+    # Generate Term-Frequency matrix
     tf_matrix = generate_tf_matrix(index_terms)
     print "\nTerm Frequency Matrix:\n\n", tf_matrix
 
-    # # Calculate TF-IDF weighting (Term-Document Matrix)
-    weight_matrix = generate_weight_matrix(tf_matrix)
-    print "\nTF-IDF Weight Matrix:\n\n", weight_matrix
+    documents = sorted(glob.glob('*.txt'))
+    # print documents
 
-    # query_vector = get_query_vector(len_new_query, index_terms)
-    cos_sim = similarity_measures.cosine_similarity([1, 2, 3], [3, 2, 1])
-    print cos_sim
+    # TF-IDF Ranking
+    tf_idf_rank = ranking_tf_idf(documents, tf_matrix)
+    print "\nRanking based on TF-IDF Weighting: "
+    print_ranking(tf_idf_rank)
 
-    # Some notes:
-    # 1) Document score will be addition of TF-IDF weighting scores
-    # over all query terms
-    #
-    # 2) Rethink normalization based on Document length. It's surely
-    # needed, as otherwise, larger docs would get priority. Maybe, Consider
-    # only the terms in vocabulary as superset (unique terms in
-    # bag of words representation of document).
-    # Also, try Maximum-TF Normalization (dividing by max tf)?
-    # Something like: ntf = 0.4 + 0.6 * (tf / tf_max)
-    # ntf is also called Augmented term frequency.
-    # 0.4 is the smoothing term.
-    #
-    # 3) Ideally, cos_sim(query, doc) should have both vector sizes
-    # equal to the size of the vocabulary. But, since we are considering
-    # TF-IDF weights as the vector values, it will turn out to be
-    # computationally very expensive for all terms in vocabulary
-    # (and inefficient, since we haven't yet used the inverted-index form).
-    # Instead, we could use vector size equal to size of query. Additionally,
-    # we could incorporate term-weights for query terms.
-    #
+    # Cosine Similarity based ranking
+    cos_sim_rank = ranking_cos_sim(documents, index_terms)
+    print "\nRanking based on Cosine Similarity: "
+    print_ranking(cos_sim_rank)
 
+    # Jaccard coefficient based ranking
 if __name__ == "__main__":
     main()
+
+# Some notes:
+# Also, try Maximum-TF Normalization (dividing by max tf)?
+# Something like: ntf = 0.4 + 0.6 * (tf / tf_max)
+# ntf is also called Augmented term frequency.
+# 0.4 is the smoothing term.
