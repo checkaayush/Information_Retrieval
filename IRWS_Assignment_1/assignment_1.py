@@ -366,6 +366,13 @@ def get_query_vector(index_terms, tf_matrix):
     return q_vector
 
 
+def print_ranking(ranks_dict):
+    print "\nRank\tFilename\tScore\n"
+    for i, t in enumerate(ranks_dict):
+        print "%d\t%s\t%f" % (i + 1, t, ranks_dict[t])
+    print
+
+
 def ranking_tf_idf(documents, tf_matrix):
 
     # TF-IDF weighting (Term-Document Matrix)
@@ -384,16 +391,9 @@ def ranking_tf_idf(documents, tf_matrix):
     return tf_idf_rank
 
 
-def print_ranking(ranks_dict):
-    print "\nRank\tFilename\tScore\n"
-    for i, t in enumerate(ranks_dict):
-        print "%d\t%s\t%f" % (i + 1, t, ranks_dict[t])
-    print
-
-
 def ranking_cos_sim(documents, index_terms):
     cos_sim_rank = {}
-    for i, d in enumerate(documents):
+    for d in documents:
         with open(d, 'r') as f:
             text = f.read()
 
@@ -414,12 +414,75 @@ def ranking_cos_sim(documents, index_terms):
         # print doc_vector
         value = similarity_measures.cosine_similarity(query_vector,
                                                       doc_vector)
-        # cos_sim.append(value)
+
         cos_sim_rank[d] = value
-        cos_sim_rank = OrderedDict(sorted(cos_sim_rank.items(), key=lambda t:
-                                   t[1], reverse=True))
+
+    cos_sim_rank = OrderedDict(sorted(cos_sim_rank.items(), key=lambda t:
+                               t[1], reverse=True))
 
     return cos_sim_rank
+
+
+def ranking_jaccard(documents, index_terms):
+    jaccard_rank = {}
+    for d in documents:
+        with open(d, 'r') as f:
+            text = f.read()
+
+        # Build vocabulary (exhaustive word set for doc + query)
+        word_list = preprocess_text(text)
+        result_list = [index_terms, word_list]
+        vocabulary = set().union(*result_list)
+
+        count = 0
+        for word in index_terms:
+            count += word_list.count(word)
+
+        union = len(vocabulary)
+        print "Union = ", union
+        intersection = count
+        print "Intersection = ", intersection
+        if intersection:
+            value = (float(intersection) / union)
+        else:
+            value = 0.0
+
+        jaccard_rank[d] = value
+
+    jaccard_rank = OrderedDict(sorted(jaccard_rank.items(), key=lambda t:
+                               t[1], reverse=True))
+    return jaccard_rank
+
+
+def ranking_euclidean_dist(documents, index_terms):
+    euclidean_rank = {}
+    for d in documents:
+        with open(d, 'r') as f:
+            text = f.read()
+
+        # Build vocabulary (exhaustive word set for doc + query)
+        word_list = preprocess_text(text)
+        result_list = [index_terms, word_list]
+        vocabulary = set().union(*result_list)
+
+        doc_vector = [0] * len(vocabulary)
+        query_vector = [0] * len(vocabulary)
+        for j, word in enumerate(vocabulary):
+            count = word_list.count(word)
+            doc_vector[j] = count
+            if word in index_terms:
+                # print word, count
+                query_vector[j] = count
+
+        value = similarity_measures.euclidean_distance(query_vector,
+                                                       doc_vector)
+
+        euclidean_rank[d] = value
+
+    euclidean_rank = OrderedDict(sorted(euclidean_rank.items(), key=lambda t:
+                                 t[1]))
+
+    return euclidean_rank
 
 
 def main():
@@ -452,6 +515,15 @@ def main():
     print_ranking(cos_sim_rank)
 
     # Jaccard coefficient based ranking
+    jaccard_rank = ranking_jaccard(documents, index_terms)
+    print "\nRanking based on Jaccard coefficient: "
+    print_ranking(jaccard_rank)
+
+    # Euclidean distance based ranking
+    euclidean_rank = ranking_euclidean_dist(documents, index_terms)
+    print "\nRanking based on Euclidean distance: (Score = Euclidean Distance)"
+    print_ranking(euclidean_rank)
+
 if __name__ == "__main__":
     main()
 
